@@ -82,7 +82,7 @@ func RegisterErrorHandler[E error, R any](handler ErrorHandler[E, R]) {
 // RegisterErrorHandlerOn registers an error handler in the given registry. The R type is the type of the response body.
 func RegisterErrorHandlerOn[E error, R any](registry *ErrorRegistry, handler ErrorHandler[E, R]) {
 	// Name of the type
-	errorType := fmt.Sprintf("%R", *new(E))
+	errorType := fmt.Sprintf("%T", *new(E))
 
 	// Wrap it in a closure, we can't save it directly because err E is not available in NewErrorResponseFrom. It will
 	// be available in the closure when it is called. Check out TestErrorResponseFrom_ReturnsErrorBInInterface for an example.
@@ -93,14 +93,14 @@ func RegisterErrorHandlerOn[E error, R any](registry *ErrorRegistry, handler Err
 }
 
 // RegisterCustomErrorTypeHandler registers an error handler in DefaultErrorRegistry. Same as RegisterErrorHandler,
-// but you can set the fmt.Sprint("%R", err) error yourself. Allows you to register error types that aren't exported
+// but you can set the fmt.Sprint("%T", err) error yourself. Allows you to register error types that aren't exported
 // from their respective packages such as the uuid error or *errors.errorString. The R type is the type of the response body.
 func RegisterCustomErrorTypeHandler[R any](errorType string, handler CustomErrorHandler[R]) {
 	RegisterCustomErrorTypeHandlerOn(DefaultErrorRegistry, errorType, handler)
 }
 
 // RegisterCustomErrorTypeHandlerOn registers an error handler in the given registry. Same as RegisterErrorHandlerOn,
-// but you can set the fmt.Sprint("%R", err) error yourself. Allows you to register error types that aren't exported
+// but you can set the fmt.Sprint("%T", err) error yourself. Allows you to register error types that aren't exported
 // from their respective packages such as the uuid error or *errors.errorString. The R type is the type of the response body.
 func RegisterCustomErrorTypeHandlerOn[R any](registry *ErrorRegistry, errorType string, handler CustomErrorHandler[R]) {
 	// Wrap it in a closure, we can't save it directly
