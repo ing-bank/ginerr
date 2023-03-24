@@ -23,6 +23,7 @@ You can register errors in 3 ways:
 package main
 
 import (
+	"github.com/gin-gonic/gin"
 	"github.com/ing-bank/ginerr"
 	"net/http"
 )
@@ -49,6 +50,13 @@ func main() {
 	}
 
 	ginerr.RegisterErrorHandler(handler)
+	
+	// [...]
+}
+
+func handleGet(c *gin.Context) {
+	err := &MyError{}
+	c.JSON(ginerr.NewErrorResponse(err))
 }
 ```
 
