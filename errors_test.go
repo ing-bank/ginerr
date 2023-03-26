@@ -196,24 +196,18 @@ func TestErrorResponseFrom_ReturnsErrorBInInterface(t *testing.T) {
 }
 
 func TestErrorResponseFrom_ReturnsErrorStrings(t *testing.T) {
-	tests := map[string]struct {
-		input string
-	}{
-		"first": {
-			input: "Something went completely wrong!",
-		},
-		"second": {
-			input: "Record not found",
-		},
+	tests := []string{
+		"Something went completely wrong!",
+		"Record not found",
 	}
 
-	for name, testData := range tests {
-		testData := testData
-		t.Run(name, func(t *testing.T) {
+	for _, errorString := range tests {
+		errorString := errorString
+		t.Run(errorString, func(t *testing.T) {
 			// Arrange
 			registry := NewErrorRegistry()
 			expectedResponse := Response{
-				Errors: map[string]any{"error": testData.input},
+				Errors: map[string]any{"error": errorString},
 			}
 
 			callback := func(err string) (int, Response) {
@@ -222,9 +216,9 @@ func TestErrorResponseFrom_ReturnsErrorStrings(t *testing.T) {
 				}
 			}
 
-			err := errors.New(testData.input)
+			err := errors.New(errorString)
 
-			RegisterStringErrorHandlerOn(registry, testData.input, callback)
+			RegisterStringErrorHandlerOn(registry, errorString, callback)
 
 			// Act
 			code, response := NewErrorResponseFrom(registry, err)
@@ -264,24 +258,18 @@ func TestErrorResponseFrom_CanConfigureMultipleErrorStrings(t *testing.T) {
 }
 
 func TestErrorResponseFrom_ReturnsCustomErrorHandlers(t *testing.T) {
-	tests := map[string]struct {
-		input string
-	}{
-		"first": {
-			input: "Something went completely wrong!",
-		},
-		"second": {
-			input: "Record not found",
-		},
+	tests := []string{
+		"Something went completely wrong!",
+		"Record not found",
 	}
 
-	for name, testData := range tests {
-		testData := testData
-		t.Run(name, func(t *testing.T) {
+	for _, errorString := range tests {
+		errorString := errorString
+		t.Run(errorString, func(t *testing.T) {
 			// Arrange
 			registry := NewErrorRegistry()
 			expectedResponse := Response{
-				Errors: map[string]any{"error": testData.input},
+				Errors: map[string]any{"error": errorString},
 			}
 
 			callback := func(err error) (int, Response) {
@@ -290,7 +278,7 @@ func TestErrorResponseFrom_ReturnsCustomErrorHandlers(t *testing.T) {
 				}
 			}
 
-			err := errors.New(testData.input)
+			err := errors.New(errorString)
 
 			RegisterCustomErrorTypeHandlerOn(registry, "*errors.errorString", callback)
 

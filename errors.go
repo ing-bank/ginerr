@@ -13,41 +13,54 @@ var DefaultErrorRegistry = NewErrorRegistry()
 type internalHandler func(err error) (int, any)
 type internalStringHandler func(err string) (int, any)
 
-// CustomErrorHandler is the template for custom errors that have unexported errors.
+// CustomErrorHandler is the template for unexported errors. For example binding.SliceValidationError
+// or uuid.invalidLengthError
 type CustomErrorHandler[R any] func(err error) (int, R)
 
-// ErrorStringHandler is the template for string errors that don't have their own object available. R is the
-// type of the response body.
+// ErrorStringHandler is the template for string errors that don't have their own object available. For example
+// "record not found" or "invalid input"
 type ErrorStringHandler[R any] func(err string) (int, R)
 
 // ErrorHandler is the template of an error handler in the ErrorRegistry. The E type is the error type that
 // the handler is registered for. The R type is the type of the response body.
 type ErrorHandler[E error, R any] func(E) (int, R)
 
-// NewErrorRegistry instantiates a new ErrorRegistry, ideal for testing or overriding the default one.
+// NewErrorRegistry is ideal for testing or overriding the default one.
 func NewErrorRegistry() *ErrorRegistry {
-	return &ErrorRegistry{
-		handlers:       map[string]internalHandler{},
-		stringHandlers: map[string]internalStringHandler{},
+	registry := &ErrorRegistry{
+		handlers:       make(map[string]internalHandler),
+		stringHandlers: make(map[string]internalStringHandler),
 		DefaultCode:    defaultCode,
 	}
+
+	// Make sure the stringHandlers are available in the handlers
+	registry.handlers["*errors.errorString"] = func(err error) (int, any) {
+		// Check if the error string exists
+		if handler, ok := registry.stringHandlers[err.Error()]; ok {
+			return handler(err.Error())
+		}
+
+		return registry.DefaultCode, registry.DefaultResponse
+	}
+
+	return registry
 }
 
-// ErrorRegistry contains a map of errors and ErrorHandler-s.
+// ErrorRegistry contains a map of ErrorHandlers.
 type ErrorRegistry struct {
 	// handlers are used when we know the type of the error
 	handlers map[string]internalHandler
+
 	// stringHandlers are used when the error is only a string
 	stringHandlers map[string]internalStringHandler
 
-	// DefaultCode is the default code to return when no handler is found
+	// DefaultCode to return when no handler is found
 	DefaultCode int
 
-	// defaultBody is the default body to return when no handler is found
+	// DefaultResponse to return when no handler is found
 	DefaultResponse any
 }
 
-// SetDefaultResponse sets the default response on no handlers found
 func (e *ErrorRegistry) SetDefaultResponse(code int, response any) {
 	e.DefaultCode = code
 	e.DefaultResponse = response
@@ -55,13 +68,13 @@ func (e *ErrorRegistry) SetDefaultResponse(code int, response any) {
 
 // NewErrorResponse Returns an error response using the DefaultErrorRegistry. If no specific handler could be found,
 // it will return the defaults.
-func NewErrorResponse[E error](err E) (int, any) {
+func NewErrorResponse(err error) (int, any) {
 	return NewErrorResponseFrom(DefaultErrorRegistry, err)
 }
 
 // NewErrorResponseFrom Returns an error response using the given registry. If no specific handler could be found,
 // it will return the defaults.
-func NewErrorResponseFrom[E error](registry *ErrorRegistry, err E) (int, any) {
+func NewErrorResponseFrom(registry *ErrorRegistry, err error) (int, any) {
 	errorType := fmt.Sprintf("%T", err)
 
 	// If a handler is registered for the error type, use it.
@@ -122,19 +135,5 @@ func RegisterStringErrorHandler[R any](errorString string, handler ErrorStringHa
 func RegisterStringErrorHandlerOn[R any](registry *ErrorRegistry, errorString string, handler ErrorStringHandler[R]) {
 	registry.stringHandlers[errorString] = func(err string) (int, any) {
 		return handler(err)
-	}
-
-	// Ensure that the string register is in the normal list of handlers
-	if _, ok := registry.handlers["*errors.errorString"]; !ok {
-
-		// Define the default string handler
-		registry.handlers["*errors.errorString"] = func(err error) (int, any) {
-			// Check if the error string exists
-			if handler, ok := registry.stringHandlers[err.Error()]; ok {
-				return handler(err.Error())
-			}
-
-			return registry.DefaultCode, registry.DefaultResponse
-		}
 	}
 }
