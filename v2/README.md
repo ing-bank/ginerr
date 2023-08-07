@@ -4,8 +4,6 @@
 ![GitHub](https://img.shields.io/github/license/ing-bank/ginerr)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/ing-bank/ginerr)
 
-**[❗ 🚨 Click here for version 2 🚨 ❗](./v2)**
-
 Sending any error back to the user can pose a [big security risk](https://owasp.org/www-community/Improper_Error_Handling).
 For this reason we developed an error registry that allows you to register specific error handlers
 for your application. This way you can control what information is sent back to the user.
@@ -17,7 +15,7 @@ You can register errors in 3 ways:
 
 ## ⬇️ Installation
 
-`go get github.com/ing-bank/ginerr`
+`go get github.com/ing-bank/ginerr/v2`
 
 ## 📋 Usage
 
@@ -26,7 +24,7 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/ing-bank/ginerr"
+	"github.com/ing-bank/ginerr/v2"
 	"net/http"
 )
 
