@@ -15,7 +15,13 @@ You can register errors in 3 ways:
 
 ## 👷 V2 migration guide
 
+V2 of this library changes the interface of all the methods to allow contexts to be passed to handlers. This
+allows you to add additional data to the final response.
+
+The interface changes are as follows.
+
 - `RegisterErrorHandler` and all its variants take a context as a first parameter in the handler, allowing you to pass more data to the response
+- `RegisterErrorHandler` and all its variants require the callback function to return `(int, any)` instead of `(int, R)`, removing the unnecessary generic
 - Both `NewErrorResponse` and `NewErrorResponseFrom` take a context as a first parameter, this could be the request context but that's up to you
 
 ## ⬇️ Installation
@@ -46,7 +52,7 @@ type Response struct {
 }
 
 func main() {
-	handler := func(ctx context.Context, myError *MyError) (int, Response) {
+	handler := func(ctx context.Context, myError *MyError) (int, any) {
 		return http.StatusInternalServerError, Response{
 			Errors: map[string]any{
 				"error": myError.Error(),
