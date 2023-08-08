@@ -14,13 +14,6 @@ var DefaultErrorRegistry = NewErrorRegistry()
 type internalHandler func(ctx context.Context, err error) (int, any)
 type internalStringHandler func(ctx context.Context, err string) (int, any)
 
-// ErrorHandler is the template of an error handler in the ErrorRegistry. The E type is the error type that
-// the handler is registered for. The R type is the type of the response body.
-type ErrorHandler[E error] interface {
-	func(E) (int, any) |
-		func(context.Context, E) (int, any)
-}
-
 // NewErrorRegistry is ideal for testing or overriding the default one.
 func NewErrorRegistry() *ErrorRegistry {
 	registry := &ErrorRegistry{

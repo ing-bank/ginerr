@@ -13,6 +13,11 @@ You can register errors in 3 ways:
 - By value of string errors
 - By defining the error name yourself
 
+## 👷 V2 migration guide
+
+- `RegisterErrorHandler` and all its variants take a context as a first parameter in the handler, allowing you to pass more data to the response
+- Both `NewErrorResponse` and `NewErrorResponseFrom` take a context as a first parameter, this could be the request context but that's up to you
+
 ## ⬇️ Installation
 
 `go get github.com/ing-bank/ginerr/v2`
@@ -41,7 +46,7 @@ type Response struct {
 }
 
 func main() {
-	handler := func(myError *MyError) (int, Response) {
+	handler := func(ctx context.Context, myError *MyError) (int, Response) {
 		return http.StatusInternalServerError, Response{
 			Errors: map[string]any{
 				"error": myError.Error(),
@@ -56,7 +61,7 @@ func main() {
 
 func handleGet(c *gin.Context) {
 	err := &MyError{}
-	c.JSON(ginerr.NewErrorResponse(err))
+	c.JSON(ginerr.NewErrorResponse(c.Request.Context(), err))
 }
 ```
 
