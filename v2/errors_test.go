@@ -128,6 +128,38 @@ func TestErrorResponseFrom_ReturnsGenericErrorOnNotFound(t *testing.T) {
 	assert.Equal(t, "test", response)
 }
 
+func TestErrorResponseFrom_UsesDefaultCallbackOnNotFound(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	registry := NewErrorRegistry()
+
+	expectedResponse := Response{
+		Errors: map[string]any{"error": "internal server error"},
+	}
+
+	var calledWithErr error
+	var calledWithCtx context.Context
+	callback := func(ctx context.Context, err error) (int, any) {
+		calledWithErr = err
+		calledWithCtx = ctx
+		return http.StatusInternalServerError, expectedResponse
+	}
+
+	registry.RegisterDefaultHandler(callback)
+
+	ctx := context.WithValue(context.Background(), ErrorA{}, "good")
+
+	// Act
+	code, response := NewErrorResponseFrom(registry, ctx, assert.AnError)
+
+	// Assert
+	assert.Equal(t, expectedResponse, response)
+	assert.Equal(t, code, http.StatusInternalServerError)
+
+	assert.Equal(t, ctx, calledWithCtx)
+	assert.Equal(t, assert.AnError, calledWithErr)
+}
+
 func TestErrorResponseFrom_ReturnsErrorAWithContext(t *testing.T) {
 	t.Parallel()
 	// Arrange
@@ -141,7 +173,7 @@ func TestErrorResponseFrom_ReturnsErrorAWithContext(t *testing.T) {
 	callback := func(ctx context.Context, err *ErrorA) (int, any) {
 		calledWithErr = err
 		calledWithCtx = ctx
-		return 500, expectedResponse
+		return http.StatusInternalServerError, expectedResponse
 	}
 
 	err := &ErrorA{message: "It was the man with one hand!"}
@@ -172,7 +204,7 @@ func TestErrorResponseFrom_ReturnsErrorB(t *testing.T) {
 	var calledWithErr *ErrorB
 	callback := func(ctx context.Context, err *ErrorB) (int, any) {
 		calledWithErr = err
-		return 500, expectedResponse
+		return http.StatusInternalServerError, expectedResponse
 	}
 
 	err := &ErrorB{message: "It was the man with one hand!"}
@@ -200,7 +232,7 @@ func TestErrorResponseFrom_ReturnsErrorBInInterface(t *testing.T) {
 	var calledWithErr error
 	callback := func(ctx context.Context, err *ErrorB) (int, any) {
 		calledWithErr = err
-		return 500, expectedResponse
+		return http.StatusInternalServerError, expectedResponse
 	}
 
 	var err error = &ErrorB{message: "It was the man with one hand!"}

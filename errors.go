@@ -7,7 +7,6 @@ import (
 
 const defaultCode = http.StatusInternalServerError
 
-// DefaultErrorRegistry is the default ErrorRegistry for the application, can be overridden for rare use-cases.
 var DefaultErrorRegistry = NewErrorRegistry()
 
 type internalHandler func(err error) (int, any)
@@ -25,7 +24,6 @@ type ErrorStringHandler[R any] func(err string) (int, R)
 // the handler is registered for. The R type is the type of the response body.
 type ErrorHandler[E error, R any] func(E) (int, R)
 
-// NewErrorRegistry is ideal for testing or overriding the default one.
 func NewErrorRegistry() *ErrorRegistry {
 	registry := &ErrorRegistry{
 		handlers:       make(map[string]internalHandler),
@@ -46,7 +44,6 @@ func NewErrorRegistry() *ErrorRegistry {
 	return registry
 }
 
-// ErrorRegistry contains a map of ErrorHandlers.
 type ErrorRegistry struct {
 	// handlers are used when we know the type of the error
 	handlers map[string]internalHandler
