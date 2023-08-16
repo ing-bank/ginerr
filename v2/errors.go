@@ -8,13 +8,11 @@ import (
 
 const defaultCode = http.StatusInternalServerError
 
-// DefaultErrorRegistry is the default ErrorRegistry for the application, can be overridden for rare use-cases.
 var DefaultErrorRegistry = NewErrorRegistry()
 
 type internalHandler func(ctx context.Context, err error) (int, any)
 type internalStringHandler func(ctx context.Context, err string) (int, any)
 
-// NewErrorRegistry is ideal for testing or overriding the default one.
 func NewErrorRegistry() *ErrorRegistry {
 	registry := &ErrorRegistry{
 		handlers:       make(map[string]internalHandler),
@@ -29,13 +27,12 @@ func NewErrorRegistry() *ErrorRegistry {
 			return handler(ctx, err.Error())
 		}
 
-		return registry.DefaultCode, registry.DefaultResponse
+		return registry.defaultResponse(ctx, err)
 	}
 
 	return registry
 }
 
-// ErrorRegistry contains a map of ErrorHandlers.
 type ErrorRegistry struct {
 	// handlers are used when we know the type of the error
 	handlers map[string]internalHandler
@@ -43,16 +40,34 @@ type ErrorRegistry struct {
 	// stringHandlers are used when the error is only a string
 	stringHandlers map[string]internalStringHandler
 
-	// DefaultCode to return when no handler is found
+	// DefaultHandler takes precedent over DefaultCode and DefaultResponse
+	DefaultHandler func(ctx context.Context, err error) (int, any)
+
+	// DefaultCode to return when no handler is found. Deprecated: Prefer DefaultHandler
 	DefaultCode int
 
-	// DefaultResponse to return when no handler is found
+	// DefaultResponse to return when no handler is found. Deprecated: Prefer DefaultHandler
 	DefaultResponse any
 }
 
+// SetDefaultResponse is deprecated, prefer RegisterDefaultHandler
 func (e *ErrorRegistry) SetDefaultResponse(code int, response any) {
 	e.DefaultCode = code
 	e.DefaultResponse = response
+}
+
+func (e *ErrorRegistry) RegisterDefaultHandler(callback func(ctx context.Context, err error) (int, any)) {
+	e.DefaultHandler = callback
+}
+
+func (e *ErrorRegistry) defaultResponse(ctx context.Context, err error) (int, any) {
+	// In production, we should return a generic error message. If you want to know why, read this:
+	// https://owasp.org/www-community/Improper_Error_Handling
+	if e.DefaultHandler != nil {
+		return e.DefaultHandler(ctx, err)
+	}
+
+	return e.DefaultCode, e.DefaultResponse
 }
 
 // NewErrorResponse Returns an error response using the DefaultErrorRegistry. If no specific handler could be found,
@@ -71,9 +86,7 @@ func NewErrorResponseFrom(registry *ErrorRegistry, ctx context.Context, err erro
 		return entry(ctx, err)
 	}
 
-	// In production, we should return a generic error message. If you want to know why, read this:
-	// https://owasp.org/www-community/Improper_Error_Handling
-	return registry.DefaultCode, registry.DefaultResponse
+	return registry.defaultResponse(ctx, err)
 }
 
 // RegisterErrorHandler registers an error handler in DefaultErrorRegistry. The R type is the type of the response body.
