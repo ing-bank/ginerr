@@ -9,8 +9,7 @@ type Response struct {
 	Errors map[string]any `json:"errors,omitempty"`
 }
 
-type MyError struct {
-}
+type MyError struct{}
 
 func (m MyError) Error() string {
 	return "Something went wrong!"

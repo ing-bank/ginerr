@@ -10,8 +10,10 @@ const defaultCode = http.StatusInternalServerError
 
 var DefaultErrorRegistry = NewErrorRegistry()
 
-type internalHandler func(ctx context.Context, err error) (int, any)
-type internalStringHandler func(ctx context.Context, err string) (int, any)
+type (
+	internalHandler       func(ctx context.Context, err error) (int, any)
+	internalStringHandler func(ctx context.Context, err string) (int, any)
+)
 
 func NewErrorRegistry() *ErrorRegistry {
 	registry := &ErrorRegistry{

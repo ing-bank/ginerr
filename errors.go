@@ -9,8 +9,10 @@ const defaultCode = http.StatusInternalServerError
 
 var DefaultErrorRegistry = NewErrorRegistry()
 
-type internalHandler func(err error) (int, any)
-type internalStringHandler func(err string) (int, any)
+type (
+	internalHandler       func(err error) (int, any)
+	internalStringHandler func(err string) (int, any)
+)
 
 // CustomErrorHandler is the template for unexported errors. For example binding.SliceValidationError
 // or uuid.invalidLengthError
@@ -64,13 +66,17 @@ func (e *ErrorRegistry) SetDefaultResponse(code int, response any) {
 }
 
 // NewErrorResponse Returns an error response using the DefaultErrorRegistry. If no specific handler could be found,
-// it will return the defaults.
+// it will return the defaults. It returns an HTTP status code and a response object.
+//
+//nolint:gocritic // Unnamed return arguments are described
 func NewErrorResponse(err error) (int, any) {
 	return NewErrorResponseFrom(DefaultErrorRegistry, err)
 }
 
 // NewErrorResponseFrom Returns an error response using the given registry. If no specific handler could be found,
-// it will return the defaults.
+// it will return the defaults. It returns an HTTP status code and a response object.
+//
+//nolint:gocritic // Unnamed return arguments are described
 func NewErrorResponseFrom(registry *ErrorRegistry, err error) (int, any) {
 	errorType := fmt.Sprintf("%T", err)
 
@@ -98,6 +104,7 @@ func RegisterErrorHandlerOn[E error, R any](registry *ErrorRegistry, handler Err
 	// be available in the closure when it is called. Check out TestErrorResponseFrom_ReturnsErrorBInInterface for an example.
 	registry.handlers[errorType] = func(err error) (int, any) {
 		// We can safely cast it here, because we know it's the right type.
+		//nolint:errorlint // Not relevant, we're casting anyway
 		return handler(err.(E))
 	}
 }

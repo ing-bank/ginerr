@@ -3,9 +3,10 @@ package ginerr
 import (
 	"context"
 	"errors"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // Register functions are tested through NewErrorResponse[E error]

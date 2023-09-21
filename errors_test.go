@@ -2,9 +2,10 @@ package ginerr
 
 import (
 	"errors"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDefaultErrorGenerator_IsSet(t *testing.T) {
@@ -18,37 +19,38 @@ func TestDefaultErrorGenerator_IsSet(t *testing.T) {
 
 // Register functions are tested through NewErrorResponse[E error]
 
-type ErrorA struct {
+type aError struct {
 	message string
 }
 
-func (e ErrorA) Error() string {
+func (e aError) Error() string {
 	return e.message
 }
 
-type ErrorB struct {
+type bError struct {
 	message string
 }
 
-func (e ErrorB) Error() string {
+func (e bError) Error() string {
 	return e.message
 }
 
 // The top ones are not parallel because it uses the DefaultErrorRegistry, which is a global
 
+//nolint:paralleltest // Because of global state
 func TestErrorResponse_UsesDefaultErrorRegistry(t *testing.T) {
 	// Arrange
 	expectedResponse := Response{
 		Errors: map[string]any{"error": "It was the man with one hand!"},
 	}
 
-	callback := func(err *ErrorA) (int, Response) {
+	callback := func(err *aError) (int, Response) {
 		return 634, Response{
 			Errors: map[string]any{"error": err.Error()},
 		}
 	}
 
-	err := &ErrorA{message: "It was the man with one hand!"}
+	err := &aError{message: "It was the man with one hand!"}
 
 	RegisterErrorHandler(callback)
 
@@ -60,6 +62,7 @@ func TestErrorResponse_UsesDefaultErrorRegistry(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 }
 
+//nolint:paralleltest // Because of global state
 func TestErrorResponse_UsesDefaultErrorRegistryForStrings(t *testing.T) {
 	// Arrange
 	expectedResponse := Response{
@@ -84,6 +87,7 @@ func TestErrorResponse_UsesDefaultErrorRegistryForStrings(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 }
 
+//nolint:paralleltest // Because of global state
 func TestErrorResponse_UsesDefaultErrorRegistryForCustomTypes(t *testing.T) {
 	// Arrange
 	expectedResponse := Response{
@@ -108,6 +112,7 @@ func TestErrorResponse_UsesDefaultErrorRegistryForCustomTypes(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 }
 
+//nolint:paralleltest // Because of global state
 func TestErrorResponseFrom_ReturnsGenericErrorOnNotFound(t *testing.T) {
 	t.Parallel()
 	// Arrange
@@ -123,6 +128,7 @@ func TestErrorResponseFrom_ReturnsGenericErrorOnNotFound(t *testing.T) {
 	assert.Equal(t, "test", response)
 }
 
+//nolint:paralleltest // Because of global state
 func TestErrorResponseFrom_ReturnsErrorA(t *testing.T) {
 	t.Parallel()
 	// Arrange
@@ -131,11 +137,11 @@ func TestErrorResponseFrom_ReturnsErrorA(t *testing.T) {
 		Errors: map[string]any{"error": "It was the man with one hand!"},
 	}
 
-	callback := func(err *ErrorA) (int, Response) {
+	callback := func(err *aError) (int, Response) {
 		return 500, expectedResponse
 	}
 
-	err := &ErrorA{message: "It was the man with one hand!"}
+	err := &aError{message: "It was the man with one hand!"}
 
 	RegisterErrorHandlerOn(registry, callback)
 
@@ -147,6 +153,7 @@ func TestErrorResponseFrom_ReturnsErrorA(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 }
 
+//nolint:paralleltest // Because of global state
 func TestErrorResponseFrom_ReturnsErrorB(t *testing.T) {
 	t.Parallel()
 	// Arrange
@@ -155,11 +162,11 @@ func TestErrorResponseFrom_ReturnsErrorB(t *testing.T) {
 		Errors: map[string]any{"error": "It was the man with one hand!"},
 	}
 
-	callback := func(err *ErrorB) (int, Response) {
+	callback := func(err *bError) (int, Response) {
 		return 500, expectedResponse
 	}
 
-	err := &ErrorB{message: "It was the man with one hand!"}
+	err := &bError{message: "It was the man with one hand!"}
 
 	RegisterErrorHandlerOn(registry, callback)
 
@@ -171,6 +178,7 @@ func TestErrorResponseFrom_ReturnsErrorB(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 }
 
+//nolint:paralleltest // Because of global state
 func TestErrorResponseFrom_ReturnsErrorBInInterface(t *testing.T) {
 	t.Parallel()
 	// Arrange
@@ -179,11 +187,11 @@ func TestErrorResponseFrom_ReturnsErrorBInInterface(t *testing.T) {
 		Errors: map[string]any{"error": "It was the man with one hand!"},
 	}
 
-	callback := func(err *ErrorB) (int, Response) {
+	callback := func(err *bError) (int, Response) {
 		return 500, expectedResponse
 	}
 
-	var err error = &ErrorB{message: "It was the man with one hand!"}
+	var err error = &bError{message: "It was the man with one hand!"}
 
 	RegisterErrorHandlerOn(registry, callback)
 
@@ -196,6 +204,7 @@ func TestErrorResponseFrom_ReturnsErrorBInInterface(t *testing.T) {
 }
 
 func TestErrorResponseFrom_ReturnsErrorStrings(t *testing.T) {
+	t.Parallel()
 	tests := []string{
 		"Something went completely wrong!",
 		"Record not found",
@@ -204,6 +213,7 @@ func TestErrorResponseFrom_ReturnsErrorStrings(t *testing.T) {
 	for _, errorString := range tests {
 		errorString := errorString
 		t.Run(errorString, func(t *testing.T) {
+			t.Parallel()
 			// Arrange
 			registry := NewErrorRegistry()
 			expectedResponse := Response{
@@ -231,6 +241,7 @@ func TestErrorResponseFrom_ReturnsErrorStrings(t *testing.T) {
 }
 
 func TestErrorResponseFrom_CanConfigureMultipleErrorStrings(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	registry := NewErrorRegistry()
 
@@ -258,6 +269,7 @@ func TestErrorResponseFrom_CanConfigureMultipleErrorStrings(t *testing.T) {
 }
 
 func TestErrorResponseFrom_ReturnsCustomErrorHandlers(t *testing.T) {
+	t.Parallel()
 	tests := []string{
 		"Something went completely wrong!",
 		"Record not found",
@@ -266,6 +278,7 @@ func TestErrorResponseFrom_ReturnsCustomErrorHandlers(t *testing.T) {
 	for _, errorString := range tests {
 		errorString := errorString
 		t.Run(errorString, func(t *testing.T) {
+			t.Parallel()
 			// Arrange
 			registry := NewErrorRegistry()
 			expectedResponse := Response{
@@ -298,7 +311,7 @@ func TestErrorResponseFrom_ReturnsGenericErrorOnTypeNotFound(t *testing.T) {
 	registry := NewErrorRegistry()
 
 	// Act
-	code, response := NewErrorResponseFrom(registry, &ErrorB{})
+	code, response := NewErrorResponseFrom(registry, &bError{})
 
 	// Assert
 	assert.Equal(t, http.StatusInternalServerError, code)
