@@ -6,6 +6,16 @@ linters-settings:
       - "performance"
       - "style"
       - "diagnostic"
+
+issues:
+  exclude-rules:
+    - path: (.+)_test.go
+      linters:
+        - funlen
+        - goconst
+        - nilnil
+        - goerr113
+
 linters:
   enable:
     - asasalint
@@ -33,7 +43,7 @@ linters:
     - goconst
     - gocritic
     - gocyclo
-#    - goerr113 # extensively used in the test files
+    - goerr113
     - gofmt
     - gofumpt
     - goheader
