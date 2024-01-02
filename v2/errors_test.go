@@ -27,6 +27,8 @@ func (e ErrorB) Error() string {
 	return e.message
 }
 
+type ErrorC error
+
 // The top ones are not parallel because it uses the DefaultErrorRegistry, which is a global
 
 func TestErrorResponse_UsesDefaultErrorRegistry(t *testing.T) {
@@ -102,7 +104,7 @@ func TestErrorResponse_UsesDefaultErrorRegistryForCustomTypes(t *testing.T) {
 		}
 	}
 
-	RegisterCustomErrorTypeHandler("*errors.errorString", callback)
+	RegisterCustomErrorTypeHandler("errors.errorString", callback)
 
 	// Act
 	code, response := NewErrorResponse(context.Background(), assert.AnError)
@@ -220,6 +222,39 @@ func TestErrorResponseFrom_ReturnsErrorB(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, code)
 	assert.Equal(t, expectedResponse, response)
+}
+
+func TestErrorResponseFrom_ReturnsErrorC(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	registry := NewErrorRegistry()
+	expectedResponse := Response{
+		Errors: map[string]any{"error": "It was the man with one hand!"},
+	}
+
+	var calledWithErr []ErrorC
+	callback := func(ctx context.Context, err ErrorC) (int, any) {
+		calledWithErr = append(calledWithErr, err)
+		return http.StatusInternalServerError, expectedResponse
+	}
+
+	err := ErrorC(ErrorB{message: "It was the man with one hand!"})
+	err2 := ErrorC(errors.New("It was the man with one hand!"))
+
+	RegisterErrorHandlerOn(registry, callback)
+
+	// Act
+	code, response := NewErrorResponseFrom(registry, context.Background(), err)
+	code2, response2 := NewErrorResponseFrom(registry, context.Background(), err2)
+
+	// Assert
+	assert.Equal(t, calledWithErr[0], err)
+	assert.Equal(t, calledWithErr[1], err2)
+
+	assert.Equal(t, http.StatusInternalServerError, code)
+	assert.Equal(t, http.StatusInternalServerError, code2)
+	assert.Equal(t, expectedResponse, response)
+	assert.Equal(t, expectedResponse, response2)
 }
 
 func TestErrorResponseFrom_ReturnsErrorBInInterface(t *testing.T) {
@@ -362,7 +397,7 @@ func TestErrorResponseFrom_ReturnsCustomErrorHandlers(t *testing.T) {
 
 			err := errors.New(errorString)
 
-			RegisterCustomErrorTypeHandlerOn(registry, "*errors.errorString", callback)
+			RegisterCustomErrorTypeHandlerOn(registry, "errors.errorString", callback)
 
 			ctx := context.WithValue(context.Background(), ErrorA{}, "good")
 
