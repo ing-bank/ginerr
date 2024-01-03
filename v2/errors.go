@@ -2,8 +2,8 @@ package ginerr
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"reflect"
 )
 
 const defaultCode = http.StatusInternalServerError
@@ -23,7 +23,7 @@ func NewErrorRegistry() *ErrorRegistry {
 	}
 
 	// Make sure the stringHandlers are available in the handlers
-	registry.handlers["*errors.errorString"] = func(ctx context.Context, err error) (int, any) {
+	registry.handlers["errors.errorString"] = func(ctx context.Context, err error) (int, any) {
 		// Check if the error string exists
 		if handler, ok := registry.stringHandlers[err.Error()]; ok {
 			return handler(ctx, err.Error())
@@ -80,8 +80,8 @@ func NewErrorResponse(ctx context.Context, err error) (int, any) {
 
 // NewErrorResponseFrom Returns an error response using the given registry. If no specific handler could be found,
 // it will return the defaults.
-func NewErrorResponseFrom(registry *ErrorRegistry, ctx context.Context, err error) (int, any) {
-	errorType := fmt.Sprintf("%T", err)
+func NewErrorResponseFrom[E error](registry *ErrorRegistry, ctx context.Context, err E) (int, any) {
+	errorType := getErrorType[E](err)
 
 	// If a handler is registered for the error type, use it.
 	if entry, ok := registry.handlers[errorType]; ok {
@@ -99,7 +99,7 @@ func RegisterErrorHandler[E error](handler func(context.Context, E) (int, any)) 
 // RegisterErrorHandlerOn registers an error handler in the given registry. The R type is the type of the response body.
 func RegisterErrorHandlerOn[E error](registry *ErrorRegistry, handler func(context.Context, E) (int, any)) {
 	// Name of the type
-	errorType := fmt.Sprintf("%T", *new(E))
+	errorType := getErrorType[E](new(E))
 
 	// Wrap it in a closure, we can't save it directly because err E is not available in NewErrorResponseFrom. It will
 	// be available in the closure when it is called. Check out TestErrorResponseFrom_ReturnsErrorBInInterface for an example.
@@ -135,4 +135,25 @@ func RegisterStringErrorHandler(errorString string, handler func(ctx context.Con
 // error objects. The R type is the type of the response body.
 func RegisterStringErrorHandlerOn(registry *ErrorRegistry, errorString string, handler func(ctx context.Context, err string) (int, any)) {
 	registry.stringHandlers[errorString] = handler
+}
+
+// getErrorType returns the errorType from the generic type. If the generic type returns the typealias "error",
+// e.g. due to `type SomeError error`, retry with the concrete `err` value.
+func getErrorType[E error](err any) string {
+	typeOf := reflect.ValueOf(new(E)).Type()
+	for typeOf.Kind() == reflect.Pointer {
+		typeOf = typeOf.Elem()
+	}
+	errorType := typeOf.String()
+
+	if errorType == "error" {
+		// try once more but with err instead of new(E)
+		typeOf = reflect.ValueOf(err).Type()
+		for typeOf.Kind() == reflect.Pointer {
+			typeOf = typeOf.Elem()
+		}
+		errorType = typeOf.String()
+	}
+
+	return errorType
 }
