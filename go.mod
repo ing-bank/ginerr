@@ -1,4 +1,4 @@
-module github.com/ing-bank/ginerr
+module github.com/ing-bank/ginerr/v2
 
 go 1.20
 

@@ -1,6 +1,9 @@
 package ginerr
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
 
 type Response struct {
 	Errors map[string]any `json:"errors,omitempty"`
@@ -13,7 +16,7 @@ func (m MyError) Error() string {
 }
 
 func ExampleRegisterErrorHandler() {
-	handler := func(myError *MyError) (int, any) {
+	handler := func(ctx context.Context, myError *MyError) (int, any) {
 		return http.StatusInternalServerError, Response{
 			Errors: map[string]any{
 				"error": myError.Error(),
@@ -27,7 +30,7 @@ func ExampleRegisterErrorHandler() {
 func ExampleRegisterErrorHandlerOn() {
 	registry := NewErrorRegistry()
 
-	handler := func(myError *MyError) (int, any) {
+	handler := func(ctx context.Context, myError *MyError) (int, any) {
 		return http.StatusInternalServerError, Response{
 			Errors: map[string]any{
 				"error": myError.Error(),
@@ -39,7 +42,7 @@ func ExampleRegisterErrorHandlerOn() {
 }
 
 func ExampleRegisterStringErrorHandler() {
-	handler := func(myError string) (int, any) {
+	handler := func(ctx context.Context, myError string) (int, any) {
 		return http.StatusInternalServerError, Response{
 			Errors: map[string]any{
 				"error": myError,
@@ -53,7 +56,7 @@ func ExampleRegisterStringErrorHandler() {
 func ExampleRegisterStringErrorHandlerOn() {
 	registry := NewErrorRegistry()
 
-	handler := func(myError string) (int, any) {
+	handler := func(ctx context.Context, myError string) (int, any) {
 		return http.StatusInternalServerError, Response{
 			Errors: map[string]any{
 				"error": myError,
