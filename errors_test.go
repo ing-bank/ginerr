@@ -3,6 +3,7 @@ package ginerr
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -11,43 +12,40 @@ import (
 
 // Register functions are tested through NewErrorResponse[E error]
 
-type ErrorA struct {
+type AError struct {
 	message string
 }
 
-func (e ErrorA) Error() string {
+func (e *AError) Error() string {
 	return e.message
 }
 
-type ErrorB struct {
+type BError struct {
 	message string
 }
 
-func (e ErrorB) Error() string {
+func (e *BError) Error() string {
 	return e.message
 }
 
-type ErrorC error
+type dummyContextKey string
 
 // The top ones are not parallel because it uses the DefaultErrorRegistry, which is a global
 
+//nolint:paralleltest // Can't be used, we use global variables
 func TestErrorResponse_UsesDefaultErrorRegistry(t *testing.T) {
 	// Arrange
-	expectedResponse := Response{
-		Errors: map[string]any{"error": "It was the man with one hand!"},
-	}
+	expectedResponse := "user-friendly error"
 
-	var calledWithError *ErrorA
-	callback := func(ctx context.Context, err *ErrorA) (int, any) {
+	var calledWithError *AError
+	callback := func(_ context.Context, err *AError) (int, any) {
 		calledWithError = err
-		return 634, Response{
-			Errors: map[string]any{"error": err.Error()},
-		}
+		return 634, expectedResponse
 	}
 
-	err := &ErrorA{message: "It was the man with one hand!"}
+	err := &AError{message: "It was the man with one hand!"}
 
-	RegisterErrorHandler(callback)
+	RegisterErrorHandler(&AError{}, callback)
 
 	// Act
 	code, response := NewErrorResponse(context.Background(), err)
@@ -58,77 +56,19 @@ func TestErrorResponse_UsesDefaultErrorRegistry(t *testing.T) {
 	assert.Equal(t, expectedResponse, response)
 }
 
-func TestErrorResponse_UsesDefaultErrorRegistryForStrings(t *testing.T) {
-	// Arrange
-	expectedResponse := Response{
-		Errors: map[string]any{"error": "my error"},
-	}
-
-	var calledWithError string
-	var calledWithContext context.Context
-	callback := func(ctx context.Context, err string) (int, any) {
-		calledWithError = err
-		calledWithContext = ctx
-		return 123, Response{
-			Errors: map[string]any{"error": err},
-		}
-	}
-
-	err := errors.New("my error")
-
-	RegisterStringErrorHandler("my error", callback)
-
-	ctx := context.WithValue(context.Background(), ErrorA{}, "anything")
-
-	// Act
-	code, response := NewErrorResponse(ctx, err)
-
-	// Assert
-	assert.Equal(t, ctx, calledWithContext)
-	assert.Equal(t, err.Error(), calledWithError)
-	assert.Equal(t, 123, code)
-	assert.Equal(t, expectedResponse, response)
-}
-
-func TestErrorResponse_UsesDefaultErrorRegistryForCustomTypes(t *testing.T) {
-	// Arrange
-	expectedResponse := Response{
-		Errors: map[string]any{"error": "assert.AnError general error for testing"},
-	}
-
-	var calledWithError error
-	callback := func(ctx context.Context, err error) (int, any) {
-		calledWithError = err
-		return 123, Response{
-			Errors: map[string]any{"error": err.Error()},
-		}
-	}
-
-	RegisterCustomErrorTypeHandler("errors.errorString", callback)
-
-	// Act
-	code, response := NewErrorResponse(context.Background(), assert.AnError)
-
-	// Assert
-	assert.Equal(t, assert.AnError, calledWithError)
-	assert.Equal(t, 123, code)
-	assert.Equal(t, expectedResponse, response)
-}
-
 // These are parallel because it uses the 'from' variant
 
-func TestErrorResponseFrom_ReturnsGenericErrorOnNotFound(t *testing.T) {
+func TestErrorResponseFrom_ReturnsNullOnNoDefaultErrorDefined(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	registry := NewErrorRegistry()
-	registry.SetDefaultResponse(123, "test")
 
 	// Act
-	code, response := NewErrorResponseFrom(registry, context.Background(), assert.AnError)
+	code, response := NewErrorResponseFrom(context.Background(), registry, assert.AnError)
 
 	// Assert
-	assert.Equal(t, 123, code)
-	assert.Equal(t, "test", response)
+	assert.Equal(t, http.StatusInternalServerError, code)
+	assert.Nil(t, response)
 }
 
 func TestErrorResponseFrom_UsesDefaultCallbackOnNotFound(t *testing.T) {
@@ -136,281 +76,169 @@ func TestErrorResponseFrom_UsesDefaultCallbackOnNotFound(t *testing.T) {
 	// Arrange
 	registry := NewErrorRegistry()
 
-	expectedResponse := Response{
-		Errors: map[string]any{"error": "internal server error"},
-	}
-
 	var calledWithErr error
 	var calledWithCtx context.Context
 	callback := func(ctx context.Context, err error) (int, any) {
 		calledWithErr = err
 		calledWithCtx = ctx
-		return http.StatusInternalServerError, expectedResponse
+		return http.StatusPaymentRequired, "abc"
 	}
 
 	registry.RegisterDefaultHandler(callback)
 
-	ctx := context.WithValue(context.Background(), ErrorA{}, "good")
+	// Dummy value to check whether it was passed correctly
+	ctx := context.WithValue(context.Background(), dummyContextKey("abc"), "good")
 
 	// Act
-	code, response := NewErrorResponseFrom(registry, ctx, assert.AnError)
+	code, response := NewErrorResponseFrom(ctx, registry, assert.AnError)
 
 	// Assert
-	assert.Equal(t, expectedResponse, response)
-	assert.Equal(t, code, http.StatusInternalServerError)
+	assert.Equal(t, "abc", response)
+	assert.Equal(t, http.StatusPaymentRequired, code)
 
 	assert.Equal(t, ctx, calledWithCtx)
 	assert.Equal(t, assert.AnError, calledWithErr)
 }
 
-func TestErrorResponseFrom_ReturnsErrorAWithContext(t *testing.T) {
+func TestErrorResponseFrom_ReturnsExpectedResponsesOnErrorTypes(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	registry := NewErrorRegistry()
-	expectedResponse := Response{
-		Errors: map[string]any{"error": "It was the man with one hand!"},
+
+	var calledWithErrA *AError
+	var calledWithCtxA context.Context
+	callbackA := func(ctx context.Context, err *AError) (int, any) {
+		calledWithErrA = err
+		calledWithCtxA = ctx
+		return 123, "abc"
 	}
 
-	var calledWithErr *ErrorA
-	var calledWithCtx context.Context
-	callback := func(ctx context.Context, err *ErrorA) (int, any) {
-		calledWithErr = err
-		calledWithCtx = ctx
-		return http.StatusInternalServerError, expectedResponse
+	var calledWithErrB *BError
+	var calledWithCtxB context.Context
+	callbackB := func(ctx context.Context, err *BError) (int, any) {
+		calledWithErrB = err
+		calledWithCtxB = ctx
+		return 456, "def"
 	}
 
-	err := &ErrorA{message: "It was the man with one hand!"}
+	errA := &AError{message: "It was the man with one hand!"}
+	errB := &BError{message: "It was the man with one hand!"}
 
-	RegisterErrorHandlerOn(registry, callback)
+	RegisterErrorHandlerOn(registry, &AError{}, callbackA)
+	RegisterErrorHandlerOn(registry, &BError{}, callbackB)
 
-	ctx := context.WithValue(context.Background(), ErrorA{}, "cool")
+	ctx := context.WithValue(context.Background(), dummyContextKey("abc"), "cool")
 
 	// Act
-	code, response := NewErrorResponseFrom(registry, ctx, err)
+	codeA, responseA := NewErrorResponseFrom(ctx, registry, errA)
+	codeB, responseB := NewErrorResponseFrom(ctx, registry, errB)
 
 	// Assert
-	assert.Equal(t, http.StatusInternalServerError, code)
-	assert.Equal(t, expectedResponse, response)
+	assert.Equal(t, 123, codeA)
+	assert.Equal(t, "abc", responseA)
+	assert.Equal(t, errA, calledWithErrA)
+	assert.Equal(t, ctx, calledWithCtxA)
 
-	assert.Equal(t, err, calledWithErr)
-	assert.Equal(t, ctx, calledWithCtx)
+	assert.Equal(t, 456, codeB)
+	assert.Equal(t, "def", responseB)
+	assert.Equal(t, errB, calledWithErrB)
+	assert.Equal(t, ctx, calledWithCtxB)
 }
 
-func TestErrorResponseFrom_ReturnsErrorB(t *testing.T) {
+func TestErrorResponseFrom_ReturnsExpectedResponsesOnErrorStrings(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	registry := NewErrorRegistry()
-	expectedResponse := Response{
-		Errors: map[string]any{"error": "It was the man with one hand!"},
+
+	var calledWithErrA error
+	var calledWithCtxA context.Context
+	callbackA := func(ctx context.Context, err error) (int, any) {
+		calledWithErrA = err
+		calledWithCtxA = ctx
+		return 123, "abc"
 	}
 
-	var calledWithErr *ErrorB
-	callback := func(ctx context.Context, err *ErrorB) (int, any) {
+	var calledWithErrB error
+	var calledWithCtxB context.Context
+	callbackB := func(ctx context.Context, err error) (int, any) {
+		calledWithErrB = err
+		calledWithCtxB = ctx
+		return 456, "def"
+	}
+
+	errA := errors.New("error A")
+	errB := errors.New("error B")
+
+	RegisterErrorHandlerOn(registry, errA, callbackA)
+	RegisterErrorHandlerOn(registry, errB, callbackB)
+
+	ctx := context.WithValue(context.Background(), dummyContextKey("abc"), "cool")
+
+	// Act
+	codeA, responseA := NewErrorResponseFrom(ctx, registry, fmt.Errorf("error A: %w", errA))
+	codeB, responseB := NewErrorResponseFrom(ctx, registry, fmt.Errorf("error B: %w", errB))
+
+	// Assert
+	assert.Equal(t, 123, codeA)
+	assert.Equal(t, "abc", responseA)
+	assert.Equal(t, errA, calledWithErrA)
+	assert.Equal(t, ctx, calledWithCtxA)
+
+	assert.Equal(t, 456, codeB)
+	assert.Equal(t, "def", responseB)
+	assert.Equal(t, errB, calledWithErrB)
+	assert.Equal(t, ctx, calledWithCtxB)
+}
+
+func TestErrorResponseFrom_HandlesWrappedErrorsProperly(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	registry := NewErrorRegistry()
+	expectedResponse := "user-friendly error"
+
+	var calledWithErr *AError
+	callback := func(_ context.Context, err *AError) (int, any) {
 		calledWithErr = err
 		return http.StatusInternalServerError, expectedResponse
 	}
 
-	err := &ErrorB{message: "It was the man with one hand!"}
+	err := fmt.Errorf("this error happened: %w", &AError{message: "abc"})
 
-	RegisterErrorHandlerOn(registry, callback)
-
-	// Act
-	code, response := NewErrorResponseFrom(registry, context.Background(), err)
-
-	// Assert
-	assert.Equal(t, calledWithErr, err)
-
-	assert.Equal(t, http.StatusInternalServerError, code)
-	assert.Equal(t, expectedResponse, response)
-}
-
-func TestErrorResponseFrom_ReturnsErrorC(t *testing.T) {
-	t.Parallel()
-	// Arrange
-	registry := NewErrorRegistry()
-	expectedResponse := Response{
-		Errors: map[string]any{"error": "It was the man with one hand!"},
-	}
-
-	var calledWithErr []ErrorC
-	callback := func(ctx context.Context, err ErrorC) (int, any) {
-		calledWithErr = append(calledWithErr, err)
-		return http.StatusInternalServerError, expectedResponse
-	}
-
-	err := ErrorC(ErrorB{message: "It was the man with one hand!"})
-	err2 := ErrorC(errors.New("It was the man with one hand!"))
-
-	RegisterErrorHandlerOn(registry, callback)
+	RegisterErrorHandlerOn(registry, &AError{}, callback)
 
 	// Act
-	code, response := NewErrorResponseFrom(registry, context.Background(), err)
-	code2, response2 := NewErrorResponseFrom(registry, context.Background(), err2)
+	code, response := NewErrorResponseFrom(context.Background(), registry, err)
 
 	// Assert
-	assert.Equal(t, calledWithErr[0], err)
-	assert.Equal(t, calledWithErr[1], err2)
-
 	assert.Equal(t, http.StatusInternalServerError, code)
-	assert.Equal(t, http.StatusInternalServerError, code2)
 	assert.Equal(t, expectedResponse, response)
-	assert.Equal(t, expectedResponse, response2)
+
+	assert.Equal(t, &AError{message: "abc"}, calledWithErr)
 }
 
 func TestErrorResponseFrom_ReturnsErrorBInInterface(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	registry := NewErrorRegistry()
-	expectedResponse := Response{
-		Errors: map[string]any{"error": "It was the man with one hand!"},
-	}
+	expectedResponse := "user-friendly error"
 
 	var calledWithErr error
-	callback := func(ctx context.Context, err *ErrorB) (int, any) {
+	callback := func(_ context.Context, err *BError) (int, any) {
 		calledWithErr = err
 		return http.StatusInternalServerError, expectedResponse
 	}
 
-	var err error = &ErrorB{message: "It was the man with one hand!"}
+	var err error = &BError{message: "It was the man with one hand!"}
 
-	RegisterErrorHandlerOn(registry, callback)
+	RegisterErrorHandlerOn(registry, &BError{}, callback)
 
 	// Act
-	code, response := NewErrorResponseFrom(registry, context.Background(), err)
+	code, response := NewErrorResponseFrom(context.Background(), registry, err)
 
 	// Assert
 	assert.Equal(t, calledWithErr, err)
 	assert.Equal(t, http.StatusInternalServerError, code)
 	assert.Equal(t, expectedResponse, response)
-}
-
-func TestErrorResponseFrom_ReturnsErrorStrings(t *testing.T) {
-	tests := []string{
-		"Something went completely wrong!",
-		"Record not found",
-	}
-
-	for _, errorString := range tests {
-		errorString := errorString
-		t.Run(errorString, func(t *testing.T) {
-			// Arrange
-			registry := NewErrorRegistry()
-			expectedResponse := Response{
-				Errors: map[string]any{"error": errorString},
-			}
-
-			var calledWithContext context.Context
-			var calledWithErr string
-			callback := func(ctx context.Context, err string) (int, any) {
-				calledWithErr = err
-				calledWithContext = ctx
-				return 234, Response{
-					Errors: map[string]any{"error": err},
-				}
-			}
-
-			err := errors.New(errorString)
-
-			RegisterStringErrorHandlerOn(registry, errorString, callback)
-
-			ctx := context.WithValue(context.Background(), ErrorA{}, "good")
-
-			// Act
-			code, response := NewErrorResponseFrom(registry, ctx, err)
-
-			// Assert
-			assert.Equal(t, ctx, calledWithContext)
-			assert.Equal(t, err.Error(), calledWithErr)
-			assert.Equal(t, 234, code)
-			assert.Equal(t, expectedResponse, response)
-		})
-	}
-}
-
-func TestErrorResponseFrom_CanConfigureMultipleErrorStrings(t *testing.T) {
-	// Arrange
-	registry := NewErrorRegistry()
-
-	var callback1CalledWithString string
-	var callback1CalledWithContext context.Context
-	callback1 := func(ctx context.Context, err string) (int, any) {
-		callback1CalledWithContext = ctx
-		callback1CalledWithString = err
-		return 456, Response{}
-	}
-
-	var callback2CalledWithString string
-	var callback2CalledWithContext context.Context
-	callback2 := func(ctx context.Context, err string) (int, any) {
-		callback2CalledWithContext = ctx
-		callback2CalledWithString = err
-		return 123, Response{}
-	}
-
-	RegisterStringErrorHandlerOn(registry, "callback1", callback1)
-	RegisterStringErrorHandlerOn(registry, "callback2", callback2)
-
-	err1 := errors.New("callback1")
-	err2 := errors.New("callback2")
-
-	ctx := context.WithValue(context.Background(), ErrorA{}, "anything")
-
-	// Act
-	code1, _ := NewErrorResponseFrom(registry, ctx, err1)
-	code2, _ := NewErrorResponseFrom(registry, ctx, err2)
-
-	// Assert
-	assert.Equal(t, err1.Error(), callback1CalledWithString)
-	assert.Equal(t, err2.Error(), callback2CalledWithString)
-
-	assert.Equal(t, ctx, callback1CalledWithContext)
-	assert.Equal(t, ctx, callback2CalledWithContext)
-
-	assert.Equal(t, 456, code1)
-	assert.Equal(t, 123, code2)
-}
-
-func TestErrorResponseFrom_ReturnsCustomErrorHandlers(t *testing.T) {
-	tests := []string{
-		"Something went completely wrong!",
-		"Record not found",
-	}
-
-	for _, errorString := range tests {
-		errorString := errorString
-		t.Run(errorString, func(t *testing.T) {
-			// Arrange
-			registry := NewErrorRegistry()
-			expectedResponse := Response{
-				Errors: map[string]any{"error": errorString},
-			}
-
-			var calledWithContext context.Context
-			var calledWithErr error
-			callback := func(ctx context.Context, err error) (int, any) {
-				calledWithErr = err
-				calledWithContext = ctx
-				return 234, Response{
-					Errors: map[string]any{"error": err.Error()},
-				}
-			}
-
-			err := errors.New(errorString)
-
-			RegisterCustomErrorTypeHandlerOn(registry, "errors.errorString", callback)
-
-			ctx := context.WithValue(context.Background(), ErrorA{}, "good")
-
-			// Act
-			code, response := NewErrorResponseFrom(registry, ctx, err)
-
-			// Assert
-			assert.Equal(t, ctx, calledWithContext)
-			assert.Equal(t, err, calledWithErr)
-			assert.Equal(t, 234, code)
-			assert.Equal(t, expectedResponse, response)
-		})
-	}
 }
 
 func TestErrorResponseFrom_ReturnsGenericErrorOnTypeNotFound(t *testing.T) {
@@ -419,25 +247,9 @@ func TestErrorResponseFrom_ReturnsGenericErrorOnTypeNotFound(t *testing.T) {
 	registry := NewErrorRegistry()
 
 	// Act
-	code, response := NewErrorResponseFrom(registry, context.Background(), &ErrorB{})
+	code, response := NewErrorResponseFrom(context.Background(), registry, &BError{})
 
 	// Assert
 	assert.Equal(t, http.StatusInternalServerError, code)
 	assert.Nil(t, response)
-}
-
-func TestErrorRegistry_SetDefaultResponse_SetsProperties(t *testing.T) {
-	t.Parallel()
-	// Arrange
-	registry := NewErrorRegistry()
-
-	code := 123
-	response := Response{Errors: map[string]any{"error": "Something went wrong"}}
-
-	// Act
-	registry.SetDefaultResponse(123, response)
-
-	// Assert
-	assert.Equal(t, code, registry.DefaultCode)
-	assert.Equal(t, response, registry.DefaultResponse)
 }

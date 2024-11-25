@@ -2,67 +2,79 @@ package ginerr
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 )
 
-type Response struct {
-	Errors map[string]any `json:"errors,omitempty"`
+var ErrDatabaseOverloaded = errors.New("database overloaded")
+
+type InputValidationError struct {
+	// ...
 }
 
-type MyError struct{}
-
-func (m MyError) Error() string {
-	return "Something went wrong!"
+func (m *InputValidationError) Error() string {
+	return "..."
 }
 
 func ExampleRegisterErrorHandler() {
-	handler := func(ctx context.Context, myError *MyError) (int, any) {
-		return http.StatusInternalServerError, Response{
-			Errors: map[string]any{
-				"error": myError.Error(),
-			},
-		}
+	// Write your error handlers
+	validationHandler := func(_ context.Context, err *InputValidationError) (int, any) {
+		return http.StatusBadRequest, "Your input was invalid: " + err.Error()
+	}
+	databaseOverloadedHandler := func(context.Context, error) (int, any) {
+		return http.StatusBadGateway, "Please try again later"
 	}
 
-	RegisterErrorHandler(handler)
+	// Register the error handlers and supply an empty version of the type for type reference
+	RegisterErrorHandler(&InputValidationError{}, validationHandler)
+	RegisterErrorHandler(ErrDatabaseOverloaded, databaseOverloadedHandler)
+
+	// Return errors somewhere deep in your code
+	errA := fmt.Errorf("validation error: %w", &InputValidationError{})
+	errB := fmt.Errorf("could not connect to database: %w", ErrDatabaseOverloaded)
+
+	// In your HTTP handlers, instantiate responses and return those to the users
+	codeA, responseA := NewErrorResponse(context.Background(), errA)
+	codeB, responseB := NewErrorResponse(context.Background(), errB)
+
+	// Check the output
+	fmt.Printf("%d: %s\n", codeA, responseA)
+	fmt.Printf("%d: %s\n", codeB, responseB)
+
+	// Output
+	// 400: Your input was invalid: ...
+	// 502: Please try again later
 }
 
 func ExampleRegisterErrorHandlerOn() {
 	registry := NewErrorRegistry()
 
-	handler := func(ctx context.Context, myError *MyError) (int, any) {
-		return http.StatusInternalServerError, Response{
-			Errors: map[string]any{
-				"error": myError.Error(),
-			},
-		}
+	// Write your error handlers
+	validationHandler := func(_ context.Context, err *InputValidationError) (int, any) {
+		return http.StatusBadRequest, "Your input was invalid: " + err.Error()
+	}
+	databaseOverloadedHandler := func(context.Context, error) (int, any) {
+		return http.StatusBadGateway, "please try again later"
 	}
 
-	RegisterErrorHandlerOn(registry, handler)
-}
+	// Register the error handlers and supply an empty version of the type for type reference
+	RegisterErrorHandlerOn(registry, &InputValidationError{}, validationHandler)
+	RegisterErrorHandlerOn(registry, ErrDatabaseOverloaded, databaseOverloadedHandler)
 
-func ExampleRegisterStringErrorHandler() {
-	handler := func(ctx context.Context, myError string) (int, any) {
-		return http.StatusInternalServerError, Response{
-			Errors: map[string]any{
-				"error": myError,
-			},
-		}
-	}
+	// Return errors somewhere deep in your code
+	errA := fmt.Errorf("validation error: %w", &InputValidationError{})
+	errB := fmt.Errorf("could not connect to database: %w", ErrDatabaseOverloaded)
 
-	RegisterStringErrorHandler("some string error", handler)
-}
+	// In your HTTP handlers, instantiate responses and return those to the users
+	codeA, responseA := NewErrorResponseFrom(context.Background(), registry, errA)
+	codeB, responseB := NewErrorResponseFrom(context.Background(), registry, errB)
 
-func ExampleRegisterStringErrorHandlerOn() {
-	registry := NewErrorRegistry()
+	// Check the output
+	fmt.Printf("%d: %s\n", codeA, responseA)
+	fmt.Printf("%d: %s\n", codeB, responseB)
 
-	handler := func(ctx context.Context, myError string) (int, any) {
-		return http.StatusInternalServerError, Response{
-			Errors: map[string]any{
-				"error": myError,
-			},
-		}
-	}
-
-	RegisterStringErrorHandlerOn(registry, "some string error", handler)
+	// Output
+	// 400: Your input was invalid: ...
+	// 502: Please try again later
 }
