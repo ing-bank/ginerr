@@ -43,7 +43,7 @@ type ErrorRegistry struct {
 	// handlers maps error types with their handlers
 	handlers map[error]*errorHandler
 
-	// defaultHandler
+	// defaultHandler is called if no matching error was registered
 	defaultHandler func(ctx context.Context, err error) (int, any)
 }
 
