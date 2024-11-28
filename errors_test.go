@@ -122,7 +122,7 @@ func TestErrorResponseFrom_ReturnsExpectedResponsesOnErrorTypes(t *testing.T) {
 	}
 
 	errA := &AError{message: "It was the man with one hand!"}
-	errB := &BError{message: "It was the man with one hand!"}
+	errB := &BError{message: "It was the woman with 3 hands!"}
 
 	RegisterErrorHandlerOn(registry, &AError{}, callbackA)
 	RegisterErrorHandlerOn(registry, &BError{}, callbackB)
@@ -188,6 +188,34 @@ func TestErrorResponseFrom_ReturnsExpectedResponsesOnErrorStrings(t *testing.T) 
 	assert.Equal(t, "def", responseB)
 	assert.Equal(t, errB, calledWithErrB)
 	assert.Equal(t, ctx, calledWithCtxB)
+}
+
+func TestErrorResponseFrom_HandlesErrorsFromMethodsProperly(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	registry := NewErrorRegistry()
+	expectedResponse := "user-friendly error"
+
+	var calledWithErr *AError
+	callback := func(_ context.Context, err *AError) (int, any) {
+		calledWithErr = err
+		return http.StatusPaymentRequired, expectedResponse
+	}
+
+	err := func() error {
+		return &AError{message: "It was the man with one hand!"}
+	}()
+
+	RegisterErrorHandlerOn(registry, &AError{}, callback)
+
+	// Act
+	code, response := NewErrorResponseFrom(context.Background(), registry, err)
+
+	// Assert
+	assert.Equal(t, http.StatusPaymentRequired, code)
+	assert.Equal(t, expectedResponse, response)
+
+	assert.Equal(t, &AError{message: "It was the man with one hand!"}, calledWithErr)
 }
 
 func TestErrorResponseFrom_HandlesWrappedErrorsProperly(t *testing.T) {
