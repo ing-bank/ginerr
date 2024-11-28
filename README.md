@@ -8,75 +8,35 @@ Sending any error back to the user can pose a [big security risk](https://owasp.
 For this reason we developed an error registry that allows you to register specific error handlers
 for your application. This way you can control what information is sent back to the user.
 
-You can register errors in 3 ways:
-- By error type
-- By value of string errors
-- By defining the error name yourself
+## 👷 V3 migration guide
 
-## 👷 V2 migration guide
+V3 completely revamps the `ErrorRegistry` and now utilises the `errors` package to match errors.
+The following changes have been made:
 
-V2 of this library changes the interface of all the methods to allow contexts to be passed to handlers. This
-allows you to add additional data to the final response.
-
-The interface changes are as follows.
-
-- `RegisterErrorHandler` and all its variants take a context as a first parameter in the handler, allowing you to pass more data to the response
-- `RegisterErrorHandler` and all its variants require the callback function to return `(int, any)` instead of `(int, R)`, removing the unnecessary generic
-- Both `NewErrorResponse` and `NewErrorResponseFrom` take a context as a first parameter, this could be the request context but that's up to you
+- `RegisterErrorHandler` now requires a concrete instance of the error as its first argument
+- `RegisterErrorHandlerOn` now requires a concrete instance of the error as its second argument
+- `RegisterStringErrorHandler` has been removed, use static `errors.New` in `RegisterErrorHandler` to get this to work
+- `RegisterStringErrorHandlerOn` has been removed, use static `errors.New` in `RegisterErrorHandlerOn` to get this to work
+- `RegisterCustomErrorTypeHandler` has been removed, wrap unexported errors from libraries to create handlers for these
+- `RegisterCustomErrorTypeHandlerOn` has been removed, wrap unexported errors from libraries to create handlers for these
+- `ErrorRegistry` changes:
+  - `DefaultCode` has been removed, use `RegisterDefaultHandler` instead
+  - `DefaultResponse` has been removed, use `RegisterDefaultHandler` instead
+  - `SetDefaultResponse` has been removed, use `RegisterDefaultHandler` instead
 
 ## ⬇️ Installation
 
-`go get github.com/ing-bank/ginerr/v2`
+`go get github.com/ing-bank/ginerr/v3`
 
 ## 📋 Usage
 
-```go
-package main
-
-import (
-	"github.com/gin-gonic/gin"
-	"github.com/ing-bank/ginerr/v2"
-	"net/http"
-)
-
-type MyError struct {
-}
-
-func (m *MyError) Error() string {
-	return "Something went wrong!"
-}
-
-// Response is an example response object, you can return anything you like
-type Response struct {
-	Errors map[string]any `json:"errors,omitempty"`
-}
-
-func main() {
-	handler := func(ctx context.Context, myError *MyError) (int, any) {
-		return http.StatusInternalServerError, Response{
-			Errors: map[string]any{
-				"error": myError.Error(),
-			},
-		}
-	}
-
-	ginerr.RegisterErrorHandler(handler)
-	
-	// [...]
-}
-
-func handleGet(c *gin.Context) {
-	err := &MyError{}
-	c.JSON(ginerr.NewErrorResponse(c.Request.Context(), err))
-}
-```
+Check out [the examples here](./examples_test.go).
 
 ## 🚀 Development
 
 1. Clone the repository
 2. Run `make tools` to install necessary tools
-3. Run `make t` to run unit tests
-4. Run `make fmt` to format code
+3. Run `make fmt` to format code
 4. Run `make lint` to lint your code
 
 You can run `make` to see a list of useful commands.

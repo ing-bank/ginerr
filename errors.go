@@ -2,158 +2,118 @@ package ginerr
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
-	"reflect"
 )
 
-const defaultCode = http.StatusInternalServerError
-
+// DefaultErrorRegistry is a global singleton empty ErrorRegistry for convenience.
 var DefaultErrorRegistry = NewErrorRegistry()
 
-type (
-	internalHandler       func(ctx context.Context, err error) (int, any)
-	internalStringHandler func(ctx context.Context, err string) (int, any)
-)
+// errorHandler encompasses the methods necessary to validate an error and calculate a response.
+type errorHandler struct {
+	// isStringError is used to catch cases where errors.New() is being used as error types,
+	// as we need to use errors.Is for those cases, errors.As is not enough
+	isStringError bool
 
+	// isType is a wrapped around an `errors.As` from RegisterERrorHandler with the type information
+	// of the target error still intact.
+	isType func(err error) bool
+
+	// handle will calculate the response. It's a wrapper around the user-provided handler
+	// which ensures that the type of the error is properly asserted using `errors.As`.
+	handle func(ctx context.Context, err error) (int, any)
+}
+
+// NewErrorRegistry instantiates a new ErrorRegistry. If you're looking for the 'default' error
+// registry, check out DefaultErrorRegistry.
 func NewErrorRegistry() *ErrorRegistry {
 	registry := &ErrorRegistry{
-		handlers:       make(map[string]internalHandler),
-		stringHandlers: make(map[string]internalStringHandler),
-		DefaultCode:    defaultCode,
-	}
-
-	// Make sure the stringHandlers are available in the handlers
-	registry.handlers["errors.errorString"] = func(ctx context.Context, err error) (int, any) {
-		// Check if the error string exists
-		if handler, ok := registry.stringHandlers[err.Error()]; ok {
-			return handler(ctx, err.Error())
-		}
-
-		return registry.defaultResponse(ctx, err)
+		handlers: make(map[error]*errorHandler),
+		defaultHandler: func(context.Context, error) (int, any) {
+			return http.StatusInternalServerError, nil
+		},
 	}
 
 	return registry
 }
 
+// ErrorRegistry is the place where errors and callbacks are stored.
 type ErrorRegistry struct {
-	// handlers are used when we know the type of the error
-	handlers map[string]internalHandler
+	// handlers maps error types with their handlers
+	handlers map[error]*errorHandler
 
-	// stringHandlers are used when the error is only a string
-	stringHandlers map[string]internalStringHandler
-
-	// DefaultHandler takes precedent over DefaultCode and DefaultResponse
-	DefaultHandler func(ctx context.Context, err error) (int, any)
-
-	// DefaultCode to return when no handler is found. Deprecated: Prefer DefaultHandler
-	DefaultCode int
-
-	// DefaultResponse to return when no handler is found. Deprecated: Prefer DefaultHandler
-	DefaultResponse any
-}
-
-// SetDefaultResponse is deprecated, prefer RegisterDefaultHandler
-func (e *ErrorRegistry) SetDefaultResponse(code int, response any) {
-	e.DefaultCode = code
-	e.DefaultResponse = response
+	// defaultHandler is called if no matching error was registered
+	defaultHandler func(ctx context.Context, err error) (int, any)
 }
 
 func (e *ErrorRegistry) RegisterDefaultHandler(callback func(ctx context.Context, err error) (int, any)) {
-	e.DefaultHandler = callback
-}
-
-func (e *ErrorRegistry) defaultResponse(ctx context.Context, err error) (int, any) {
-	// In production, we should return a generic error message. If you want to know why, read this:
-	// https://owasp.org/www-community/Improper_Error_Handling
-	if e.DefaultHandler != nil {
-		return e.DefaultHandler(ctx, err)
-	}
-
-	return e.DefaultCode, e.DefaultResponse
+	e.defaultHandler = callback
 }
 
 // NewErrorResponse Returns an error response using the DefaultErrorRegistry. If no specific handler could be found,
 // it will return the defaults.
 func NewErrorResponse(ctx context.Context, err error) (int, any) {
-	return NewErrorResponseFrom(DefaultErrorRegistry, ctx, err)
+	return NewErrorResponseFrom(ctx, DefaultErrorRegistry, err)
 }
 
 // NewErrorResponseFrom Returns an error response using the given registry. If no specific handler could be found,
 // it will return the defaults.
-func NewErrorResponseFrom[E error](registry *ErrorRegistry, ctx context.Context, err E) (int, any) {
-	errorType := getErrorType[E](err)
+func NewErrorResponseFrom[E error](ctx context.Context, registry *ErrorRegistry, err E) (int, any) {
+	for errConcrete, handler := range registry.handlers {
+		// We can't use `errors.As` here directly, as we don't have a concrete version of the type here
+		if !handler.isType(err) {
+			continue
+		}
 
-	// If a handler is registered for the error type, use it.
-	if entry, ok := registry.handlers[errorType]; ok {
-		return entry(ctx, err)
+		// If it's a string error, it must match the given error exactly, otherwise it might mix up if we only
+		// check on type
+		if handler.isStringError {
+			if errors.Is(err, errConcrete) {
+				// It might be wrapped, so we pass the concrete type
+				return handler.handle(ctx, errConcrete)
+			}
+
+			continue
+		}
+
+		return handler.handle(ctx, err)
 	}
 
-	return registry.defaultResponse(ctx, err)
+	return registry.defaultHandler(ctx, err)
 }
 
-// RegisterErrorHandler registers an error handler in DefaultErrorRegistry. The R type is the type of the response body.
-func RegisterErrorHandler[E error](handler func(context.Context, E) (int, any)) {
-	RegisterErrorHandlerOn(DefaultErrorRegistry, handler)
+// RegisterErrorHandler registers an error handler in DefaultErrorRegistry.
+func RegisterErrorHandler[E error](instance E, handler func(context.Context, E) (int, any)) {
+	RegisterErrorHandlerOn(DefaultErrorRegistry, instance, handler)
 }
 
-// RegisterErrorHandlerOn registers an error handler in the given registry. The R type is the type of the response body.
-func RegisterErrorHandlerOn[E error](registry *ErrorRegistry, handler func(context.Context, E) (int, any)) {
-	// Name of the type
-	errorType := getErrorType[E](new(E))
+// errorStringType is used to check if an error was created by errors.New or fmt.Errorf
+//
+//nolint:err113 // We need it here for the type name
+var errorStringType = fmt.Sprintf("%T", errors.New(""))
 
+// RegisterErrorHandlerOn registers an error handler in the given registry.
+func RegisterErrorHandlerOn[E error](registry *ErrorRegistry, instance E, handler func(context.Context, E) (int, any)) {
 	// Wrap it in a closure, we can't save it directly because err E is not available in NewErrorResponseFrom. It will
 	// be available in the closure when it is called. Check out TestErrorResponseFrom_ReturnsErrorBInInterface for an example.
-	registry.handlers[errorType] = func(ctx context.Context, err error) (int, any) {
-		return handler(ctx, err.(E))
+	registry.handlers[instance] = &errorHandler{
+		// Necessary to make sure we match error strings using `errors.Is`
+		isStringError: fmt.Sprintf("%T", instance) == errorStringType,
+
+		// Handler that uses errors.As to cast to an error
+		handle: func(ctx context.Context, err error) (int, any) {
+			var errorOfType E
+
+			// This function should only be called if errors.Is succeeded, so this should never fail
+			_ = errors.As(err, &errorOfType)
+
+			return handler(ctx, errorOfType)
+		},
+
+		// Type check, as we need `instance` from this function
+		isType: func(err error) bool {
+			return errors.As(err, &instance)
+		},
 	}
-}
-
-// RegisterCustomErrorTypeHandler registers an error handler in DefaultErrorRegistry. Same as RegisterErrorHandler,
-// but you can set the fmt.Sprint("%T", err) error yourself. Allows you to register error types that aren't exported
-// from their respective packages such as the uuid error or *errors.errorString. The R type is the type of the response body.
-func RegisterCustomErrorTypeHandler(errorType string, handler func(ctx context.Context, err error) (int, any)) {
-	RegisterCustomErrorTypeHandlerOn(DefaultErrorRegistry, errorType, handler)
-}
-
-// RegisterCustomErrorTypeHandlerOn registers an error handler in the given registry. Same as RegisterErrorHandlerOn,
-// but you can set the fmt.Sprint("%T", err) error yourself. Allows you to register error types that aren't exported
-// from their respective packages such as the uuid error or *errors.errorString. The R type is the type of the response body.
-func RegisterCustomErrorTypeHandlerOn(registry *ErrorRegistry, errorType string, handler func(ctx context.Context, err error) (int, any)) {
-	// Wrap it in a closure, we can't save it directly
-	registry.handlers[errorType] = handler
-}
-
-// RegisterStringErrorHandler allows you to register an error handler for a simple errorString created with
-// errors.New() or fmt.Errorf(). Can be used in case you are dealing with libraries that don't have exported
-// error objects. Uses the DefaultErrorRegistry. The R type is the type of the response body.
-func RegisterStringErrorHandler(errorString string, handler func(ctx context.Context, err string) (int, any)) {
-	RegisterStringErrorHandlerOn(DefaultErrorRegistry, errorString, handler)
-}
-
-// RegisterStringErrorHandlerOn allows you to register an error handler for a simple errorString created with
-// errors.New() or fmt.Errorf(). Can be used in case you are dealing with libraries that don't have exported
-// error objects. The R type is the type of the response body.
-func RegisterStringErrorHandlerOn(registry *ErrorRegistry, errorString string, handler func(ctx context.Context, err string) (int, any)) {
-	registry.stringHandlers[errorString] = handler
-}
-
-// getErrorType returns the errorType from the generic type. If the generic type returns the typealias "error",
-// e.g. due to `type SomeError error`, retry with the concrete `err` value.
-func getErrorType[E error](err any) string {
-	typeOf := reflect.ValueOf(new(E)).Type()
-	for typeOf.Kind() == reflect.Pointer {
-		typeOf = typeOf.Elem()
-	}
-	errorType := typeOf.String()
-
-	if errorType == "error" {
-		// try once more but with err instead of new(E)
-		typeOf = reflect.ValueOf(err).Type()
-		for typeOf.Kind() == reflect.Pointer {
-			typeOf = typeOf.Elem()
-		}
-		errorType = typeOf.String()
-	}
-
-	return errorType
 }
