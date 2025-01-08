@@ -76,5 +76,5 @@ func ExampleRegisterErrorHandlerOn() {
 
 	// Output:
 	// 400: Your input was invalid: ...
-	// 502: Please try again later
+	// 502: please try again later
 }
