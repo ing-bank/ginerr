@@ -42,7 +42,7 @@ func ExampleRegisterErrorHandler() {
 	fmt.Printf("%d: %s\n", codeA, responseA)
 	fmt.Printf("%d: %s\n", codeB, responseB)
 
-	// Output
+	// Output:
 	// 400: Your input was invalid: ...
 	// 502: Please try again later
 }
@@ -74,7 +74,7 @@ func ExampleRegisterErrorHandlerOn() {
 	fmt.Printf("%d: %s\n", codeA, responseA)
 	fmt.Printf("%d: %s\n", codeB, responseB)
 
-	// Output
+	// Output:
 	// 400: Your input was invalid: ...
 	// 502: Please try again later
 }

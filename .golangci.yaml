@@ -4,6 +4,7 @@ issues:
       linters:
         - goconst # Test data doesn't need to be in constants
         - err113 # Necessary for tests
+        - fatcontext # We save contexts for validation
 
 linters-settings:
   nlreturn:
@@ -24,87 +25,17 @@ linters-settings:
       - fieldalignment
 
 linters:
-  enable:
-    - asasalint
-    - asciicheck
-    - bidichk
-    - bodyclose
-    - canonicalheader
-    - containedctx
-    - contextcheck
-    - copyloopvar
-    - cyclop
-    - decorder
-    - dogsled
-    - durationcheck
-    - errcheck
-    - errchkjson
-    - errname
-    - errorlint
-    - exhaustive
-    - copyloopvar
-    - forbidigo
-    - ginkgolinter
-    - gocheckcompilerdirectives
-    - gochecknoinits
-    - gocognit
-    - goconst
-    - gocritic
-    - err113 
-    - gofmt
-    - gofumpt
-    - goheader
-    - goimports
-    - gomoddirectives 
-    - gomodguard
-    - goprintffuncname
-    - gosec
-    - gosimple
-    - gosmopolitan
-    - govet
-    - grouper
-    - importas
-    - ineffassign
-    - interfacebloat
-    - intrange
-    - ireturn
-    - loggercheck
-    - maintidx
-    - makezero
-    - mirror
-    - misspell
-    - mnd
-    - musttag 
-    - nakedret
-    - nestif
-    - nilerr
-    - nilnil
-    - nlreturn
-    - nolintlint
-    - nonamedreturns
-    - nosprintfhostport
-    - paralleltest 
-    - perfsprint
-    - prealloc
-    - predeclared
-    - promlinter
-    - reassign
-    - revive
-    - rowserrcheck
-    - spancheck
-    - sqlclosecheck
-    - staticcheck
-    - tagalign
-    - tagliatelle
-    - tenv
-    - testifylint
-    - thelper
-    - tparallel
-    - typecheck
-    - unconvert
-    - unparam
-    - unused
-    - usestdlibvars
-    - wastedassign
-    - whitespace
-    - zerologlint
+  enable-all: true
+  disable: 
+    # Disabled because they're too strict
+    - gochecknoglobals # We sometimes use global variables for ease of use
+    - depguard # Unnecessary check
+    - exhaustruct # We don't always have to fill all fields
+    - lll # We don't enforce line lengths
+    - wsl # Too strict about statement placement
+    - wrapcheck # We don't enforce wrapping
+    - varnamelen # We don't enforce var name length
+    - testpackage # We don't use test packages
+    - funlen # We don't enforce the length of a function
+    - exportloopref # Deprecated and no longer required in 1.22
+
